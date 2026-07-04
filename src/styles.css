@@ -1,0 +1,605 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #090606;
+  color: #fff5f7;
+  --ink: #fff5f7;
+  --muted: #b5a4a8;
+  --panel: #140d0f;
+  --panel-strong: #211014;
+  --line: rgba(255, 245, 247, 0.13);
+  --brass: #f3043f;
+  --coral: #ffb000;
+  --mint: #56cfe1;
+  --cyan: #f3043f;
+  --deep: #090606;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 74% 14%, rgba(243, 4, 63, 0.2), transparent 30%),
+    radial-gradient(circle at 16% 70%, rgba(243, 4, 63, 0.13), transparent 28%),
+    linear-gradient(180deg, #1a1513 0%, #100b0c 42%, #050505 100%);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+#app {
+  min-height: 100vh;
+  padding: 18px;
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  margin: 0 auto 12px;
+  max-width: 1600px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--brass);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-size: 2.1rem;
+  line-height: 1;
+  color: var(--brass);
+  font-style: italic;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+h2 {
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.stream-strip,
+.balance-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(20, 13, 15, 0.84);
+  padding: 10px 14px;
+}
+
+.stream-strip {
+  justify-content: center;
+}
+
+.balance-box {
+  min-width: 150px;
+  justify-content: space-between;
+}
+
+.balance-box span,
+.stream-strip span:first-child {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.balance-box strong {
+  color: var(--brass);
+  font-size: 1.3rem;
+}
+
+.phase-badge {
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(243, 4, 63, 0.14);
+  color: var(--cyan);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.phase-badge[data-phase="live"] {
+  background: rgba(243, 4, 63, 0.14);
+  color: var(--cyan);
+}
+
+#timerLabel {
+  color: var(--ink);
+  font-size: 1.35rem;
+  font-weight: 800;
+  min-width: 58px;
+  text-align: right;
+}
+
+.brand-graphic {
+  position: relative;
+  max-width: 1600px;
+  height: clamp(150px, 19vw, 270px);
+  margin: 0 auto 18px;
+  overflow: hidden;
+  border: 1px solid rgba(243, 4, 63, 0.46);
+  border-radius: 8px;
+  background: #080606;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.32);
+}
+
+.brand-graphic::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background:
+    linear-gradient(90deg, rgba(5, 5, 5, 0.04), rgba(243, 4, 63, 0.1) 58%, rgba(5, 5, 5, 0.08)),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 5px);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.brand-graphic img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+  opacity: 0.88;
+  filter: contrast(1.08) saturate(1.08);
+}
+
+.brand-graphic span {
+  position: absolute;
+  top: clamp(12px, 2.1vw, 30px);
+  left: 62%;
+  z-index: 1;
+  color: var(--brass);
+  font-size: clamp(2.4rem, 6.8vw, 7.6rem);
+  font-style: italic;
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 0.86;
+  text-transform: uppercase;
+  text-shadow:
+    0 0 10px rgba(243, 4, 63, 0.58),
+    0 0 30px rgba(243, 4, 63, 0.42);
+  transform: translateX(-18%) skewX(-9deg);
+}
+
+.game-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(520px, 1fr) 320px;
+  gap: 16px;
+  max-width: 1600px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+.control-panel,
+.chart-panel,
+.panel-block {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(20, 13, 15, 0.9);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+.control-panel {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.panel-heading {
+  display: grid;
+  gap: 2px;
+}
+
+.panel-heading.compact {
+  margin-bottom: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(255, 245, 247, 0.2);
+  border-radius: 8px;
+  background: #0b0808;
+  color: var(--ink);
+  padding: 0 12px;
+  outline: none;
+}
+
+input:focus,
+select:focus,
+button:focus-visible {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 3px rgba(243, 4, 63, 0.2);
+}
+
+input[type="range"] {
+  min-height: 24px;
+  padding: 0;
+  accent-color: var(--brass);
+}
+
+.stake-row {
+  display: grid;
+  gap: 10px;
+}
+
+.stake-meter {
+  display: grid;
+  gap: 4px;
+}
+
+.axis-pair {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.quote-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+
+.quote-grid div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(9, 6, 6, 0.72);
+  padding: 10px;
+  min-width: 0;
+}
+
+dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+dd {
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.primary-action,
+.secondary-action {
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.primary-action {
+  background: var(--brass);
+  color: #fff8fa;
+  text-transform: uppercase;
+}
+
+.primary-action:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.primary-action:disabled {
+  background: rgba(168, 187, 183, 0.32);
+  color: rgba(238, 245, 239, 0.46);
+}
+
+.secondary-action {
+  border: 1px solid rgba(255, 245, 247, 0.2);
+  background: transparent;
+  color: var(--ink);
+}
+
+.status-line {
+  min-height: 38px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.chart-panel {
+  padding: 14px;
+}
+
+.chart-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.legend-danger {
+  background: rgba(243, 4, 63, 0.74);
+}
+
+.legend-safe {
+  background: rgba(86, 207, 225, 0.68);
+}
+
+.canvas-frame {
+  width: 100%;
+  height: 660px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 245, 247, 0.16);
+  border-radius: 8px;
+  background: var(--deep);
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.right-rail {
+  display: grid;
+  gap: 16px;
+}
+
+.panel-block {
+  padding: 16px;
+}
+
+.player-list {
+  display: grid;
+  gap: 8px;
+  max-height: 286px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.player-row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "marker name status"
+    "marker meta status";
+  align-items: center;
+  gap: 2px 8px;
+  width: 100%;
+  min-height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(9, 6, 6, 0.58);
+  color: var(--ink);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.player-row.selected {
+  border-color: rgba(243, 4, 63, 0.82);
+  background: rgba(243, 4, 63, 0.12);
+}
+
+.player-marker {
+  grid-area: marker;
+  width: 10px;
+  height: 30px;
+  border-radius: 999px;
+}
+
+.player-name {
+  grid-area: name;
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-meta {
+  grid-area: meta;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.player-status {
+  grid-area: status;
+  border-radius: 999px;
+  background: rgba(168, 187, 183, 0.18);
+  color: var(--muted);
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.player-row[data-status="survived"] .player-status,
+.history-row[data-status="survived"] strong {
+  color: var(--mint);
+}
+
+.player-row[data-status="hit"] .player-status,
+.history-row[data-status="hit"] strong {
+  color: #ff9b85;
+}
+
+.inspect-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.inspect-title span {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.inspect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+
+.inspect-grid div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(9, 6, 6, 0.58);
+  padding: 9px;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(9, 6, 6, 0.58);
+  padding: 9px;
+}
+
+.history-row span,
+.history-row small {
+  color: var(--muted);
+}
+
+.history-row strong,
+.history-row em {
+  text-align: right;
+}
+
+.history-row em {
+  grid-column: 2;
+  color: var(--brass);
+  font-style: normal;
+  font-weight: 850;
+}
+
+.empty-state {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 1180px) {
+  .topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .stream-strip,
+  .balance-box {
+    justify-content: space-between;
+  }
+
+  .game-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .canvas-frame {
+    height: 560px;
+  }
+
+  .brand-graphic span {
+    left: 63%;
+  }
+}
+
+@media (max-width: 680px) {
+  #app {
+    padding: 12px;
+  }
+
+  .chart-toolbar {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .quote-grid,
+  .inspect-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .canvas-frame {
+    height: 440px;
+  }
+
+  .brand-graphic {
+    height: 148px;
+  }
+
+  .brand-graphic span {
+    left: 66%;
+    top: 16px;
+    font-size: clamp(2.1rem, 12vw, 4.2rem);
+  }
+}
