@@ -8,7 +8,12 @@
   <body>
     <div id="app">
       <header class="topbar">
-        <div>
+        <div class="brand-lockup">
+          <span class="brand-icon" aria-hidden="true">
+            <span class="brand-icon-frame">
+              <img src="./anti-aviator-logo.svg" alt="" />
+            </span>
+          </span>
           <h1>anti-aviator</h1>
         </div>
         <div class="stream-strip" aria-live="polite">
@@ -21,11 +26,6 @@
           <strong id="balanceLabel">1000</strong>
         </div>
       </header>
-
-      <section class="brand-graphic" aria-label="Anti Aviator graphic">
-        <img src="./anti-aviator-theme.png" alt="" />
-        <span>Anti</span>
-      </section>
 
       <main class="game-layout">
         <section class="control-panel" aria-label="Bet controls">
@@ -44,24 +44,30 @@
               <span>Stake</span>
               <input id="stakeInput" type="number" min="1" max="300" step="1" />
             </label>
+            <div class="axis-pair stake-summary">
+              <span id="stakeTimeLabel">ETA 20s</span>
+              <span id="stakeCreditLabel">0 credits</span>
+            </div>
+          </div>
+
+          <div class="altitude-row">
+            <label class="field">
+              <span>Altitude ticks</span>
+              <input id="altitudeInput" type="number" min="1" max="240" step="1" />
+            </label>
             <div class="stake-meter">
-              <input id="stakeRange" type="range" min="1" max="300" step="1" />
+              <input id="altitudeRange" type="range" min="1" max="240" step="1" />
               <div class="axis-pair">
-                <span id="stakeTimeLabel">ETA 15s</span>
-                <span id="stakeCreditLabel">0 credits</span>
+                <span id="altitudeTickLabel">0 ticks</span>
+                <span id="altitudeLimitLabel">max 0</span>
               </div>
             </div>
           </div>
 
-          <label class="field">
-            <span>Payout</span>
-            <select id="payoutSelect"></select>
-          </label>
-
           <dl class="quote-grid">
             <div>
-              <dt>Flight altitude</dt>
-              <dd id="altitudeLabel">-</dd>
+              <dt>Derived payout</dt>
+              <dd id="payoutLabel">-</dd>
             </div>
             <div>
               <dt>Win chance</dt>
@@ -82,7 +88,7 @@
           <div class="chart-toolbar">
             <div>
               <p class="eyebrow">anti-aircraft fire</p>
-              <h2 id="chartTitle">Charge impact locked center</h2>
+              <h2 id="chartTitle">Flak impact at 75%</h2>
             </div>
             <div class="legend">
               <span><i class="legend-danger"></i>kill zone</span>

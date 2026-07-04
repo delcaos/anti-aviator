@@ -8,7 +8,10 @@ import {
   generateBotRun,
   generateChargePath,
   getPayoutOptions,
+  maxSelectableAltitude,
   nextChargeAltitude,
+  quoteAltitudeBet,
+  randomPlaneColor,
   resolveRunStatus,
   settleRun,
   survivalChanceForAltitude,
@@ -47,7 +50,25 @@ test('payout options move planes lower or higher relative to the current charge'
   assert.ok(Math.abs(evenPayout.winChance - 0.5) < 0.15);
 });
 
-test('plane run impact is scheduled 15 seconds after launch', () => {
+test('altitude quote derives payout from chosen altitude', () => {
+  const risky = quoteAltitudeBet(20, 15);
+  const safer = quoteAltitudeBet(20, 35);
+
+  assert.ok(risky.valid);
+  assert.ok(safer.valid);
+  assert.equal(risky.altitudeTicks, 15);
+  assert.equal(safer.altitudeTicks, 35);
+  assert.ok(risky.payoutMultiplier > safer.payoutMultiplier);
+  assert.ok(risky.winChance < safer.winChance);
+});
+
+test('altitude quote clamps to the selectable flight ceiling', () => {
+  const quote = quoteAltitudeBet(20, 999);
+  assert.equal(quote.altitudeTicks, maxSelectableAltitude(20));
+  assert.ok(quote.valid);
+});
+
+test('plane run impact is scheduled 20 seconds after launch', () => {
   const option = getPayoutOptions(20).find((item) => item.payoutMultiplier === 2);
   const run = createPlaneRun({
     id: 'user-1',
@@ -60,8 +81,8 @@ test('plane run impact is scheduled 15 seconds after launch', () => {
   });
 
   assert.equal(run.status, 'inbound');
-  assert.equal(run.impactTimeMs, 16_000);
-  assert.equal(run.exitsAtMs, 31_000);
+  assert.equal(run.impactTimeMs, 21_000);
+  assert.equal(run.exitsAtMs, 36_000);
 });
 
 test('settlement explodes planes at or below the flak altitude', () => {
@@ -86,8 +107,15 @@ test('bot generation creates a valid inbound plane run', () => {
   assert.equal(bot.id, 'bot-1');
   assert.equal(bot.kind, 'bot');
   assert.equal(bot.status, 'inbound');
+  assert.match(bot.color, /^hsl\(\d+, \d+%, \d+%\)$/);
   assert.ok(bot.altitudeTicks >= 1);
   assert.ok(bot.winChance > 0 && bot.winChance <= 1);
+});
+
+test('random plane color uses the full launch color generator', () => {
+  const values = [0, 0.5, 0.999];
+  const color = randomPlaneColor(() => values.shift() ?? 0);
+  assert.equal(color, 'hsl(0, 84%, 66%)');
 });
 
 test('balance deducts stake and pays stake times payout on survival', () => {

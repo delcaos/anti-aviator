@@ -1,6 +1,6 @@
 export const CONTINUOUS_CONFIG = Object.freeze({
   tickMs: 100,
-  entryEtaSeconds: 15,
+  entryEtaSeconds: 20,
   exitAfterCenterSeconds: 15,
   maxStake: 300,
   startingBalance: 1_000,
@@ -9,6 +9,7 @@ export const CONTINUOUS_CONFIG = Object.freeze({
 });
 
 export const PAYOUT_MULTIPLIERS = Object.freeze([1.2, 1.5, 2, 3, 5, 8, 10, 15, 20, 30]);
+export const MAX_DERIVED_PAYOUT = 999;
 
 const BOT_NAMES = Object.freeze([
   'Aero',
@@ -31,19 +32,6 @@ const BOT_NAMES = Object.freeze([
   'Vector',
   'Warden',
   'Zephyr',
-]);
-
-const BOT_COLORS = Object.freeze([
-  '#f7c948',
-  '#56cfe1',
-  '#ff7a59',
-  '#8bd17c',
-  '#c084fc',
-  '#fca5a5',
-  '#7dd3fc',
-  '#f8b84e',
-  '#9ae6b4',
-  '#f0abfc',
 ]);
 
 const distributionCache = new Map();
@@ -144,6 +132,52 @@ export function nearestAltitudeForWinChance(initialChargeAltitude, desiredWinCha
   return best;
 }
 
+export function maxSelectableAltitude(
+  currentChargeAltitude,
+  etaSeconds = CONTINUOUS_CONFIG.entryEtaSeconds,
+) {
+  const initialChargeAltitude = Math.max(0, Math.round(Number(currentChargeAltitude) || 0));
+  const steps = Math.round(etaSeconds * (1000 / CONTINUOUS_CONFIG.tickMs));
+  return Math.max(
+    CONTINUOUS_CONFIG.initialAltitude + 20,
+    Math.ceil((initialChargeAltitude + steps + 8) / 5) * 5,
+  );
+}
+
+export function normalizeAltitudeTicks(
+  altitudeTicks,
+  currentChargeAltitude = CONTINUOUS_CONFIG.initialAltitude,
+  etaSeconds = CONTINUOUS_CONFIG.entryEtaSeconds,
+) {
+  const maxAltitude = maxSelectableAltitude(currentChargeAltitude, etaSeconds);
+  return clamp(Math.round(Number(altitudeTicks) || 1), 1, maxAltitude);
+}
+
+export function quoteAltitudeBet(
+  currentChargeAltitude,
+  altitudeTicks,
+  etaSeconds = CONTINUOUS_CONFIG.entryEtaSeconds,
+) {
+  const initialChargeAltitude = Math.max(0, Math.round(Number(currentChargeAltitude) || 0));
+  const normalizedAltitude = normalizeAltitudeTicks(altitudeTicks, initialChargeAltitude, etaSeconds);
+  const steps = Math.round(etaSeconds * (1000 / CONTINUOUS_CONFIG.tickMs));
+  const winChance = survivalChanceForAltitude(initialChargeAltitude, normalizedAltitude, steps);
+  const rawPayout = winChance > 0 ? 1 / winChance : Number.POSITIVE_INFINITY;
+  const payoutMultiplier = Number.isFinite(rawPayout)
+    ? Math.round(Math.min(rawPayout, MAX_DERIVED_PAYOUT) * 100) / 100
+    : null;
+
+  return {
+    payoutMultiplier,
+    desiredWinChance: winChance,
+    altitudeTicks: normalizedAltitude,
+    altitudeOffsetTicks: normalizedAltitude - initialChargeAltitude,
+    winChance,
+    capped: rawPayout > MAX_DERIVED_PAYOUT,
+    valid: winChance > 0 && payoutMultiplier !== null,
+  };
+}
+
 export function getPayoutOptions(
   currentChargeAltitude,
   multipliers = PAYOUT_MULTIPLIERS,
@@ -240,6 +274,13 @@ export function randomInt(min, max, rng = Math.random) {
   return Math.floor(rng() * (max - min + 1)) + min;
 }
 
+export function randomPlaneColor(rng = Math.random) {
+  const hue = randomInt(0, 359, rng);
+  const saturation = randomInt(72, 96, rng);
+  const lightness = randomInt(54, 66, rng);
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
+
 export function generateBotRun({
   id,
   currentChargeAltitude,
@@ -267,7 +308,7 @@ export function generateBotRun({
     id,
     username: name,
     kind: 'bot',
-    color: BOT_COLORS[randomInt(0, BOT_COLORS.length - 1, rng)],
+    color: randomPlaneColor(rng),
     stakeCredits,
     option,
     enteredAtMs,

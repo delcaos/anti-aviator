@@ -1,28 +1,40 @@
 import './styles.css';
 import {
   CONTINUOUS_CONFIG,
-  PAYOUT_MULTIPLIERS,
   applyPayout,
   createPlaneRun,
   deductStake,
   generateBotRun,
-  getPayoutOptions,
+  maxSelectableAltitude,
   nextChargeAltitude,
+  normalizeAltitudeTicks,
   normalizeStake,
+  quoteAltitudeBet,
+  randomPlaneColor,
   randomInt,
   settleRun,
 } from './game.js';
+import {
+  PLANE_TRACE_CENTER,
+  PLANE_TRACE_LEVEL_ROTATION_DEGREES,
+  PLANE_TRACE_PATH,
+  PLANE_TRACE_VIEWBOX,
+} from './planeTrace.js';
 
 const STORAGE_KEYS = Object.freeze({
   balance: 'anti-aviator.balance',
   username: 'anti-aviator.username',
 });
 
-const USER_COLOR = '#f3043f';
+const PREVIEW_COLOR = '#f3043f';
 const UI_REFRESH_MS = 160;
 const BOT_MIN_GAP_MS = 700;
 const BOT_MAX_GAP_MS = 1_900;
 const HISTORY_LIMIT = 8;
+const IMPACT_WINDOW_PX = 10;
+const PLANE_TRACE_RENDER_WIDTH = 112;
+
+let planeTracePathCache = null;
 
 const elements = {
   streamLabel: document.querySelector('#streamLabel'),
@@ -31,11 +43,13 @@ const elements = {
   balanceLabel: document.querySelector('#balanceLabel'),
   usernameInput: document.querySelector('#usernameInput'),
   stakeInput: document.querySelector('#stakeInput'),
-  stakeRange: document.querySelector('#stakeRange'),
   stakeTimeLabel: document.querySelector('#stakeTimeLabel'),
   stakeCreditLabel: document.querySelector('#stakeCreditLabel'),
-  payoutSelect: document.querySelector('#payoutSelect'),
-  altitudeLabel: document.querySelector('#altitudeLabel'),
+  altitudeInput: document.querySelector('#altitudeInput'),
+  altitudeRange: document.querySelector('#altitudeRange'),
+  altitudeTickLabel: document.querySelector('#altitudeTickLabel'),
+  altitudeLimitLabel: document.querySelector('#altitudeLimitLabel'),
+  payoutLabel: document.querySelector('#payoutLabel'),
   chanceLabel: document.querySelector('#chanceLabel'),
   returnLabel: document.querySelector('#returnLabel'),
   placeBetButton: document.querySelector('#placeBetButton'),
@@ -57,7 +71,7 @@ const state = {
   history: [],
   hitboxes: [],
   selectedRunId: null,
-  selectedPayout: null,
+  selectedAltitude: CONTINUOUS_CONFIG.initialAltitude + 10,
   nextBotAtMs: 0,
   lastTickAtMs: 0,
   lastUiRenderAt: 0,
@@ -79,7 +93,14 @@ function formatCredits(value) {
 }
 
 function formatMultiplier(value) {
-  return `${Number(value).toFixed(value % 1 === 0 ? 0 : 1)}x`;
+  if (!Number.isFinite(value)) {
+    return '-';
+  }
+
+  const decimals = value >= 10 ? 1 : 2;
+  const rounded = Number(value.toFixed(decimals));
+  const finalDecimals = rounded % 1 === 0 ? 0 : decimals;
+  return `${rounded.toFixed(finalDecimals)}x`;
 }
 
 function formatPercent(value) {
@@ -114,21 +135,10 @@ function getCurrentStake() {
   return normalizeStake(elements.stakeInput.value, state.balance);
 }
 
-function getCurrentOptions() {
-  return getPayoutOptions(state.currentAltitude);
-}
-
 function getSelectedOption() {
-  const options = getCurrentOptions();
-  if (!options.length) {
-    state.selectedPayout = null;
-    return null;
-  }
-
-  const selectedValue = Number(elements.payoutSelect.value || state.selectedPayout);
-  const selected = options.find((option) => option.payoutMultiplier === selectedValue) || options[0];
-  state.selectedPayout = selected.payoutMultiplier;
-  return selected;
+  const altitudeTicks = normalizeAltitudeTicks(state.selectedAltitude, state.currentAltitude);
+  state.selectedAltitude = altitudeTicks;
+  return quoteAltitudeBet(state.currentAltitude, altitudeTicks);
 }
 
 function updateChargeTimeline(now) {
@@ -259,7 +269,13 @@ function placeUserBet() {
   }
 
   if (!option) {
-    state.message = 'No fair payout is available at the current charge altitude.';
+    state.message = 'Choose an altitude with a viable payout.';
+    renderControls();
+    return;
+  }
+
+  if (!option.valid) {
+    state.message = 'That altitude has no viable survival chance.';
     renderControls();
     return;
   }
@@ -271,7 +287,7 @@ function placeUserBet() {
   const run = createRun({
     username,
     kind: 'user',
-    color: USER_COLOR,
+    color: randomPlaneColor(),
     stakeCredits,
     option,
     enteredAtMs: now,
@@ -298,51 +314,38 @@ function syncStakeBounds() {
   const nextStake = maxStake < 1 ? 0 : normalizeStake(previousStake, state.balance);
 
   elements.stakeInput.max = String(Math.max(1, maxStake));
-  elements.stakeRange.max = String(Math.max(1, maxStake));
   elements.stakeInput.value = String(nextStake);
-  elements.stakeRange.value = String(Math.max(1, nextStake));
 }
 
-function renderPayoutOptions() {
-  const previousPayout = Number(elements.payoutSelect.value || state.selectedPayout);
-  const currentValues = Array.from(elements.payoutSelect.options).map((option) => Number(option.value));
-  const optionsAreCurrent = currentValues.length === PAYOUT_MULTIPLIERS.length
-    && currentValues.every((value, index) => value === PAYOUT_MULTIPLIERS[index]);
+function syncAltitudeBounds() {
+  const maxAltitude = maxSelectableAltitude(state.currentAltitude);
+  const nextAltitude = normalizeAltitudeTicks(state.selectedAltitude, state.currentAltitude);
 
-  if (optionsAreCurrent) {
-    return;
-  }
-
-  elements.payoutSelect.innerHTML = '';
-
-  PAYOUT_MULTIPLIERS.forEach((payoutMultiplier) => {
-    const item = document.createElement('option');
-    item.value = String(payoutMultiplier);
-    item.textContent = formatMultiplier(payoutMultiplier);
-    elements.payoutSelect.append(item);
-  });
-
-  const selected = PAYOUT_MULTIPLIERS.includes(previousPayout) ? previousPayout : PAYOUT_MULTIPLIERS[0];
-  elements.payoutSelect.value = String(selected);
-  state.selectedPayout = selected;
+  state.selectedAltitude = nextAltitude;
+  elements.altitudeInput.max = String(maxAltitude);
+  elements.altitudeRange.max = String(maxAltitude);
+  elements.altitudeInput.value = String(nextAltitude);
+  elements.altitudeRange.value = String(nextAltitude);
+  elements.altitudeTickLabel.textContent = `${nextAltitude} ticks`;
+  elements.altitudeLimitLabel.textContent = `max ${maxAltitude}`;
 }
 
 function renderControls() {
   syncStakeBounds();
-  renderPayoutOptions();
+  syncAltitudeBounds();
 
   const stakeCredits = getCurrentStake();
   const option = getSelectedOption();
-  const canBet = Boolean(stakeCredits >= 1 && stakeCredits <= state.balance && option);
+  const canBet = Boolean(stakeCredits >= 1 && stakeCredits <= state.balance && option?.valid);
 
   elements.balanceLabel.textContent = formatCredits(state.balance);
   elements.stakeTimeLabel.textContent = `ETA ${CONTINUOUS_CONFIG.entryEtaSeconds}s`;
   elements.stakeCreditLabel.textContent = `${stakeCredits} credits`;
-  elements.altitudeLabel.textContent = option
-    ? `${option.altitudeTicks} ticks (${formatOffset(option.altitudeOffsetTicks)})`
+  elements.payoutLabel.textContent = option?.valid
+    ? `${formatMultiplier(option.payoutMultiplier)}${option.capped ? '+' : ''}`
     : '-';
-  elements.chanceLabel.textContent = option ? formatPercent(option.winChance) : '-';
-  elements.returnLabel.textContent = option
+  elements.chanceLabel.textContent = option?.valid ? formatPercent(option.winChance) : '-';
+  elements.returnLabel.textContent = option?.valid
     ? `${formatCredits(stakeCredits * option.payoutMultiplier)} credits`
     : '-';
   elements.placeBetButton.disabled = !canBet;
@@ -354,7 +357,7 @@ function renderTopbar() {
   elements.phaseBadge.textContent = 'Streaming';
   elements.phaseBadge.dataset.phase = 'live';
   elements.altitudeBadge.textContent = `Altitude ${state.currentAltitude}`;
-  elements.chartTitle.textContent = 'Flak impact locked center';
+  elements.chartTitle.textContent = 'Flak impact at 75%';
 }
 
 function getVisibleRuns(now) {
@@ -367,7 +370,7 @@ function getLaunchPreview(now = performance.now()) {
   const stakeCredits = getCurrentStake();
   const option = getSelectedOption();
 
-  if (!option || stakeCredits < 1 || stakeCredits > state.balance) {
+  if (!option?.valid || stakeCredits < 1 || stakeCredits > state.balance) {
     return null;
   }
 
@@ -375,7 +378,7 @@ function getLaunchPreview(now = performance.now()) {
     id: 'launch-preview',
     username: elements.usernameInput.value.trim() || 'Pilot',
     kind: 'preview',
-    color: USER_COLOR,
+    color: PREVIEW_COLOR,
     stakeCredits,
     payoutMultiplier: option.payoutMultiplier,
     potentialPayout: Math.round(stakeCredits * option.payoutMultiplier * 100) / 100,
@@ -545,30 +548,31 @@ function createChartMapper(width, height, maxAltitude) {
     left: 62,
     right: 36,
     top: 62,
-    bottom: 58,
+    bottom: 132,
   };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-  const centerX = padding.left + plotWidth / 2;
+  const impactX = padding.left + plotWidth * 0.75;
   const rightX = width - padding.right;
   const leftX = padding.left;
   const bottomY = height - padding.bottom;
-  const pxPerSecond = (centerX - leftX) / CONTINUOUS_CONFIG.entryEtaSeconds;
+  const pxPerSecond = (impactX - leftX) / CONTINUOUS_CONFIG.entryEtaSeconds;
 
   return {
     padding,
     plotWidth,
     plotHeight,
-    centerX,
+    centerX: impactX,
+    impactX,
     rightX,
     leftX,
     bottomY,
     pxPerSecond,
     xForImpactTime(impactTimeMs, now) {
-      return centerX - ((impactTimeMs - now) / 1000) * pxPerSecond;
+      return impactX - ((impactTimeMs - now) / 1000) * pxPerSecond;
     },
     xForTimelineTime(timeMs, now) {
-      return centerX + ((timeMs - now) / 1000) * pxPerSecond;
+      return impactX + ((timeMs - now) / 1000) * pxPerSecond;
     },
     yForAltitude(altitudeTicks) {
       return bottomY - (altitudeTicks / maxAltitude) * plotHeight;
@@ -589,7 +593,7 @@ function drawCanvas(now = performance.now()) {
   drawChargePath(map, now);
   drawPlanes(map, now);
   drawLaunchPreview(map, now);
-  drawAntiAircraftGun(map);
+  drawAntiAircraftGun(map, now);
 }
 
 function drawSky(width, height, map, now) {
@@ -620,14 +624,16 @@ function drawGrid(width, height, map, maxAltitude) {
   context.lineWidth = 1;
   context.font = '12px Inter, system-ui, sans-serif';
 
-  for (let seconds = -15; seconds <= 15; seconds += 5) {
-    const x = map.centerX + seconds * map.pxPerSecond;
-    context.beginPath();
-    context.moveTo(x, map.padding.top);
-    context.lineTo(x, map.bottomY);
-    context.stroke();
+  for (let seconds = -20; seconds <= 5; seconds += 5) {
+    const x = map.impactX + seconds * map.pxPerSecond;
+    if (seconds !== 0) {
+      context.beginPath();
+      context.moveTo(x, map.padding.top);
+      context.lineTo(x, map.bottomY);
+      context.stroke();
+    }
     const label = seconds === 0 ? 'impact' : `${seconds > 0 ? '+' : ''}${seconds}s`;
-    context.fillText(label, x - 18, height - 25);
+    context.fillText(label, x - 18, map.bottomY + 26);
   }
 
   const altitudeStep = maxAltitude <= 50 ? 10 : 20;
@@ -640,16 +646,9 @@ function drawGrid(width, height, map, maxAltitude) {
     context.fillText(`${altitude}`, 22, y + 4);
   }
 
-  context.strokeStyle = 'rgba(243, 4, 63, 0.72)';
-  context.lineWidth = 2;
-  context.beginPath();
-  context.moveTo(map.centerX, map.padding.top);
-  context.lineTo(map.centerX, map.bottomY);
-  context.stroke();
-
   context.fillStyle = 'rgba(245, 245, 240, 0.9)';
   context.font = '600 12px Inter, system-ui, sans-serif';
-  context.fillText('impact timeline', width - 126, height - 25);
+  context.fillText('impact timeline', width - 126, map.bottomY + 26);
   context.save();
   context.translate(18, map.padding.top + map.plotHeight / 2);
   context.rotate(-Math.PI / 2);
@@ -725,38 +724,215 @@ function drawChargePath(map, now) {
   context.restore();
 }
 
-function drawAntiAircraftGun(map) {
-  const gunX = map.rightX - 34;
-  const gunY = map.bottomY - 12;
+function drawAntiAircraftGun(map, now) {
+  const gunX = map.rightX - 64;
+  const gunY = map.bottomY + 84;
   const targetX = map.centerX;
   const targetY = map.yForAltitude(state.currentAltitude);
+  const pivotX = gunX - 8;
+  const pivotY = gunY - 33;
+  const angle = Math.atan2(targetY - pivotY, targetX - pivotX);
+  const muzzle = {
+    x: pivotX + Math.cos(angle) * 88,
+    y: pivotY + Math.sin(angle) * 88,
+  };
 
+  drawTracerFire({ start: muzzle, end: { x: targetX, y: targetY }, angle, now });
+  drawRapidFlakBursts(targetX, targetY, now);
+  drawGunBody({ gunX, gunY, pivotX, pivotY, angle, now });
+}
+
+function drawGunBody({ gunX, gunY, pivotX, pivotY, angle, now }) {
   context.save();
-  context.strokeStyle = 'rgba(243, 4, 63, 0.7)';
-  context.lineWidth = 2;
-  context.setLineDash([8, 7]);
-  context.beginPath();
-  context.moveTo(gunX, gunY - 20);
-  context.lineTo(targetX, targetY);
-  context.stroke();
-  context.setLineDash([]);
-  drawExplosion(targetX, targetY, 10, '#f3043f');
+  context.lineJoin = 'round';
+  context.lineCap = 'round';
 
-  context.translate(gunX, gunY);
-  context.fillStyle = '#f3043f';
-  context.strokeStyle = '#111';
+  const glow = 0.5 + Math.sin(now / 80) * 0.2;
+  context.shadowColor = 'rgba(243, 4, 63, 0.55)';
+  context.shadowBlur = 12 * glow;
+
+  context.strokeStyle = 'rgba(10, 8, 8, 0.95)';
+  context.lineWidth = 5;
+  context.beginPath();
+  context.moveTo(gunX - 34, gunY + 12);
+  context.lineTo(gunX - 12, gunY - 5);
+  context.lineTo(gunX + 18, gunY + 12);
+  context.moveTo(gunX - 10, gunY + 7);
+  context.lineTo(gunX - 18, gunY + 26);
+  context.moveTo(gunX + 8, gunY + 7);
+  context.lineTo(gunX + 24, gunY + 26);
+  context.stroke();
+
+  context.fillStyle = '#220b12';
+  context.strokeStyle = '#f3043f';
   context.lineWidth = 2;
-  roundedRect(-28, -10, 58, 18, 5);
+  roundedRect(gunX - 38, gunY + 5, 74, 18, 5);
   context.fill();
   context.stroke();
-  context.fillRect(-6, -30, 12, 24);
-  context.strokeRect(-6, -30, 12, 24);
+
   context.beginPath();
-  context.moveTo(-16, 8);
-  context.lineTo(-28, 28);
-  context.moveTo(16, 8);
-  context.lineTo(30, 28);
+  context.arc(gunX - 28, gunY + 25, 9, 0, Math.PI * 2);
+  context.arc(gunX + 27, gunY + 25, 9, 0, Math.PI * 2);
+  context.fillStyle = '#12090a';
+  context.fill();
   context.stroke();
+
+  context.fillStyle = '#f3043f';
+  context.strokeStyle = 'rgba(8, 6, 6, 0.95)';
+  context.lineWidth = 3;
+  roundedRect(gunX - 24, gunY - 18, 42, 24, 7);
+  context.fill();
+  context.stroke();
+
+  context.save();
+  context.translate(pivotX, pivotY);
+  context.rotate(angle);
+  context.shadowBlur = 10;
+
+  context.fillStyle = '#f3043f';
+  context.strokeStyle = 'rgba(8, 6, 6, 0.96)';
+  context.lineWidth = 2.5;
+  roundedRect(-16, -12, 36, 24, 6);
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = '#2b0c13';
+  context.strokeStyle = '#f3043f';
+  roundedRect(12, -11, 82, 7, 3);
+  context.fill();
+  context.stroke();
+  roundedRect(12, 4, 82, 7, 3);
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = '#ffb000';
+  context.strokeStyle = '#ffd166';
+  roundedRect(90, -13, 12, 11, 4);
+  context.fill();
+  context.stroke();
+  roundedRect(90, 2, 12, 11, 4);
+  context.fill();
+  context.stroke();
+
+  drawMuzzleFlash(100, -6, now);
+  drawMuzzleFlash(100, 9, now + 90);
+  context.restore();
+
+  context.restore();
+}
+
+function drawMuzzleFlash(x, y, now) {
+  const pulse = 0.68 + Math.sin(now / 34) * 0.32;
+  context.save();
+  context.globalAlpha = 0.55 + pulse * 0.45;
+  context.fillStyle = '#ffb000';
+  context.shadowColor = '#ffb000';
+  context.shadowBlur = 18;
+  context.beginPath();
+  context.moveTo(x, y);
+  context.lineTo(x + 26 * pulse, y - 8);
+  context.lineTo(x + 17 * pulse, y);
+  context.lineTo(x + 29 * pulse, y + 8);
+  context.closePath();
+  context.fill();
+  context.restore();
+}
+
+function drawTracerFire({ start, end, angle, now }) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance <= 0) {
+    return;
+  }
+
+  const ux = dx / distance;
+  const uy = dy / distance;
+  const px = -uy;
+  const py = ux;
+  const streams = [-5, 5];
+
+  context.save();
+  context.lineCap = 'round';
+  streams.forEach((offset, streamIndex) => {
+    for (let shell = 0; shell < 7; shell += 1) {
+      const phase = ((now + shell * 58 + streamIndex * 72) % 430) / 430;
+      const travel = phase * distance;
+      const length = 18 + phase * 18;
+      const x = start.x + ux * travel + px * offset;
+      const y = start.y + uy * travel + py * offset;
+      const tailX = x - ux * length;
+      const tailY = y - uy * length;
+
+      context.globalAlpha = 0.18 + phase * 0.82;
+      context.strokeStyle = shell % 2 === 0 ? '#ffb000' : '#f3043f';
+      context.lineWidth = shell % 2 === 0 ? 3 : 2;
+      context.shadowColor = context.strokeStyle;
+      context.shadowBlur = 11;
+      context.beginPath();
+      context.moveTo(tailX, tailY);
+      context.lineTo(x, y);
+      context.stroke();
+
+      context.fillStyle = '#fff2b8';
+      context.beginPath();
+      context.arc(x, y, 2.4, 0, Math.PI * 2);
+      context.fill();
+    }
+  });
+
+  context.globalAlpha = 0.22;
+  context.strokeStyle = 'rgba(255, 176, 0, 0.55)';
+  context.lineWidth = 1;
+  context.setLineDash([9, 10]);
+  context.beginPath();
+  context.moveTo(start.x, start.y);
+  context.lineTo(end.x, end.y);
+  context.stroke();
+  context.setLineDash([]);
+  context.restore();
+
+  drawGunSmoke(start.x + Math.cos(angle) * 6, start.y + Math.sin(angle) * 6, now);
+}
+
+function drawGunSmoke(x, y, now) {
+  context.save();
+  context.globalAlpha = 0.22;
+  context.fillStyle = '#f5f5f0';
+  for (let puff = 0; puff < 4; puff += 1) {
+    const drift = ((now / 240) + puff * 0.31) % 1;
+    context.beginPath();
+    context.arc(
+      x - 8 - drift * 18,
+      y - 8 - puff * 3 + Math.sin(now / 140 + puff) * 2,
+      5 + drift * 7,
+      0,
+      Math.PI * 2,
+    );
+    context.fill();
+  }
+  context.restore();
+}
+
+function drawRapidFlakBursts(x, y, now) {
+  context.save();
+  for (let burst = 0; burst < 4; burst += 1) {
+    const phase = ((now + burst * 88) % 360) / 360;
+    const alpha = 1 - phase;
+    const offsetX = Math.sin(now / 95 + burst * 2.1) * (5 + burst * 3);
+    const offsetY = Math.cos(now / 110 + burst * 1.7) * (5 + burst * 2);
+    const radius = 7 + phase * 24;
+
+    context.globalAlpha = 0.18 + alpha * 0.68;
+    drawExplosion(x + offsetX, y + offsetY, radius, burst % 2 === 0 ? '#ffb000' : '#f3043f');
+
+    context.globalAlpha = alpha * 0.28;
+    context.strokeStyle = '#fff2b8';
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(x + offsetX, y + offsetY, radius * 1.25, 0, Math.PI * 2);
+    context.stroke();
+  }
   context.restore();
 }
 
@@ -769,26 +945,30 @@ function drawPlanes(map, now) {
 
     const y = map.yForAltitude(run.altitudeTicks);
     const selected = state.selectedRunId === run.id;
+    const hasReachedFiringLine = x >= map.centerX - IMPACT_WINDOW_PX;
+    const showImpact = run.status === 'hit' && hasReachedFiringLine;
+    const impactAgeMs = Math.max(0, now - run.impactTimeMs);
 
-    drawPlane({
-      x,
-      y,
-      color: run.status === 'hit'
-        ? '#9a1f33'
-        : run.status === 'survived'
-          ? '#56cfe1'
-          : run.color,
-      selected,
-      exploded: run.status === 'hit',
-      label: run.username,
-    });
+    if (showImpact) {
+      drawFireball(x, y, impactAgeMs, selected);
+      drawPlaneLabel(run.username, x, y - 44, selected);
+    } else {
+      drawSvgPlane({
+        x,
+        y,
+        color: run.color,
+        selected,
+        ghost: false,
+        label: run.username,
+      });
+    }
 
     state.hitboxes.push({
       runId: run.id,
-      x: x - 34,
-      y: y - 24,
-      width: 68,
-      height: 48,
+      x: x - 52,
+      y: y - 36,
+      width: 104,
+      height: 72,
     });
   });
 }
@@ -802,7 +982,6 @@ function drawLaunchPreview(map, now) {
   const actualEntryX = map.xForImpactTime(preview.impactTimeMs, now);
   const x = Math.max(map.leftX + 24, actualEntryX);
   const y = map.yForAltitude(preview.altitudeTicks);
-  const centerY = map.yForAltitude(state.currentAltitude);
 
   context.save();
   context.setLineDash([8, 7]);
@@ -812,80 +991,111 @@ function drawLaunchPreview(map, now) {
   context.moveTo(x, y);
   context.lineTo(map.centerX, y);
   context.stroke();
-  context.setLineDash([4, 6]);
-  context.strokeStyle = 'rgba(245, 245, 240, 0.48)';
-  context.beginPath();
-  context.moveTo(map.centerX, Math.min(y, centerY));
-  context.lineTo(map.centerX, Math.max(y, centerY));
-  context.stroke();
   context.restore();
 
-  drawPlane({
+  drawSvgPlane({
     x,
     y,
-    color: USER_COLOR,
+    color: PREVIEW_COLOR,
     selected: true,
-    preview: true,
-    label: `${preview.username} preview`,
-    meta: `${formatMultiplier(preview.payoutMultiplier)} | ${formatOffset(preview.altitudeOffsetTicks)}`,
+    ghost: true,
   });
 }
 
-function drawPlane({ x, y, color, selected = false, exploded = false, preview = false, label, meta }) {
+function getPlaneTracePath() {
+  if (!planeTracePathCache) {
+    planeTracePathCache = new Path2D(PLANE_TRACE_PATH);
+  }
+  return planeTracePathCache;
+}
+
+function drawSvgPlane({
+  x,
+  y,
+  color,
+  selected = false,
+  ghost = false,
+  label = '',
+}) {
+  const path = getPlaneTracePath();
+  const scale = PLANE_TRACE_RENDER_WIDTH / PLANE_TRACE_VIEWBOX.width;
+
   context.save();
   context.translate(x, y);
-  context.globalAlpha = preview ? 0.5 : exploded ? 0.78 : 1;
+  context.rotate((PLANE_TRACE_LEVEL_ROTATION_DEGREES * Math.PI) / 180);
+  context.scale(scale, scale);
+  context.translate(-PLANE_TRACE_CENTER.x, -PLANE_TRACE_CENTER.y);
+  context.globalAlpha = ghost ? 0.42 : 1;
   context.shadowColor = selected ? 'rgba(243, 4, 63, 0.75)' : 'transparent';
   context.shadowBlur = selected ? 18 : 0;
 
   context.fillStyle = color;
-  context.strokeStyle = selected ? '#fff4f7' : 'rgba(10, 8, 8, 0.9)';
-  context.lineWidth = selected ? 3 : 2;
-  if (preview) {
-    context.setLineDash([5, 4]);
+  context.fill(path, 'evenodd');
+  context.restore();
+
+  if (label) {
+    drawPlaneLabel(label, x, y - 28, selected);
   }
+}
 
-  context.beginPath();
-  context.moveTo(28, 0);
-  context.lineTo(-18, -13);
-  context.lineTo(-8, -3);
-  context.lineTo(-30, -2);
-  context.lineTo(-30, 2);
-  context.lineTo(-8, 3);
-  context.lineTo(-18, 13);
-  context.closePath();
-  context.fill();
-  context.stroke();
-
-  context.beginPath();
-  context.moveTo(-18, 0);
-  context.lineTo(-31, -13);
-  context.lineTo(-25, 0);
-  context.lineTo(-31, 13);
-  context.closePath();
-  context.fill();
-  context.stroke();
-
-  if (exploded) {
-    context.restore();
-    drawExplosion(x, y, 17, '#ffb000');
-  } else {
-    context.restore();
-  }
-
+function drawPlaneLabel(label, x, y, selected = false) {
   context.save();
   context.font = selected ? '700 13px Inter, system-ui, sans-serif' : '600 12px Inter, system-ui, sans-serif';
   context.textAlign = 'center';
   context.fillStyle = '#f5f5f0';
   context.strokeStyle = 'rgba(3, 2, 2, 0.86)';
   context.lineWidth = 3;
-  context.strokeText(label, x, y - 24);
-  context.fillText(label, x, y - 24);
-  if (meta) {
-    context.font = '700 11px Inter, system-ui, sans-serif';
-    context.strokeText(meta, x, y + 30);
-    context.fillText(meta, x, y + 30);
+  context.strokeText(label, x, y);
+  context.fillText(label, x, y);
+  context.restore();
+}
+
+function drawFireball(x, y, impactAgeMs, selected = false) {
+  const pulse = 0.84 + Math.sin(impactAgeMs / 74) * 0.16;
+  const radius = 34 * pulse;
+  const glow = context.createRadialGradient(x - 6, y - 7, 2, x, y, radius * 1.45);
+  glow.addColorStop(0, '#fff7cf');
+  glow.addColorStop(0.2, '#ffb000');
+  glow.addColorStop(0.52, '#f3043f');
+  glow.addColorStop(1, 'rgba(58, 8, 9, 0)');
+
+  context.save();
+  context.fillStyle = glow;
+  context.shadowColor = '#f3043f';
+  context.shadowBlur = selected ? 28 : 18;
+  context.beginPath();
+  context.arc(x, y, radius * 1.45, 0, Math.PI * 2);
+  context.fill();
+
+  const lobes = [
+    [-17, -9, 18],
+    [7, -15, 23],
+    [20, 4, 17],
+    [-3, 14, 21],
+    [-22, 12, 14],
+  ];
+
+  lobes.forEach(([offsetX, offsetY, size], index) => {
+    const wobble = Math.sin((impactAgeMs / 92) + index * 1.7) * 4;
+    context.fillStyle = index % 2 === 0 ? '#ffb000' : '#f3043f';
+    context.beginPath();
+    context.arc(x + offsetX + wobble, y + offsetY - wobble / 2, size * pulse, 0, Math.PI * 2);
+    context.fill();
+  });
+
+  context.fillStyle = '#fff7cf';
+  context.beginPath();
+  context.arc(x - 5, y - 5, 10 * pulse, 0, Math.PI * 2);
+  context.fill();
+
+  if (selected) {
+    context.strokeStyle = '#fff4f7';
+    context.lineWidth = 2.5;
+    context.beginPath();
+    context.arc(x, y, radius * 1.18, 0, Math.PI * 2);
+    context.stroke();
   }
+
   context.restore();
 }
 
@@ -943,23 +1153,26 @@ function handleCanvasClick(event) {
   }
 }
 
-function syncStakeInputs(source) {
-  const value = source === 'range' ? elements.stakeRange.value : elements.stakeInput.value;
-  const stake = normalizeStake(value, state.balance);
+function syncStakeInputs() {
+  const stake = normalizeStake(elements.stakeInput.value, state.balance);
   elements.stakeInput.value = String(stake);
-  elements.stakeRange.value = String(Math.max(1, stake));
+  renderControls();
+}
+
+function syncAltitudeInputs(source) {
+  const value = source === 'range' ? elements.altitudeRange.value : elements.altitudeInput.value;
+  state.selectedAltitude = normalizeAltitudeTicks(value, state.currentAltitude);
+  elements.altitudeInput.value = String(state.selectedAltitude);
+  elements.altitudeRange.value = String(state.selectedAltitude);
   renderControls();
 }
 
 function bindEvents() {
   elements.placeBetButton.addEventListener('click', placeUserBet);
   elements.resetBalanceButton.addEventListener('click', resetBalance);
-  elements.stakeInput.addEventListener('input', () => syncStakeInputs('input'));
-  elements.stakeRange.addEventListener('input', () => syncStakeInputs('range'));
-  elements.payoutSelect.addEventListener('change', () => {
-    state.selectedPayout = Number(elements.payoutSelect.value);
-    renderControls();
-  });
+  elements.stakeInput.addEventListener('input', syncStakeInputs);
+  elements.altitudeInput.addEventListener('input', () => syncAltitudeInputs('input'));
+  elements.altitudeRange.addEventListener('input', () => syncAltitudeInputs('range'));
   elements.usernameInput.addEventListener('input', () => {
     localStorage.setItem(STORAGE_KEYS.username, elements.usernameInput.value.trim());
   });
@@ -983,11 +1196,14 @@ function init() {
   const now = performance.now();
   elements.usernameInput.value = localStorage.getItem(STORAGE_KEYS.username) || 'Pilot';
   elements.stakeInput.value = '75';
-  elements.stakeRange.value = '75';
+  state.selectedAltitude = state.currentAltitude + 10;
+  elements.altitudeInput.value = String(state.selectedAltitude);
+  elements.altitudeRange.value = String(state.selectedAltitude);
   state.lastTickAtMs = now;
   state.timeline = [{ timeMs: now, altitudeTicks: state.currentAltitude }];
   bindEvents();
   syncStakeBounds();
+  syncAltitudeBounds();
   seedInitialTraffic(now);
   renderUi(now);
   requestAnimationFrame(animationLoop);
