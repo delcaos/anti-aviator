@@ -55,7 +55,6 @@ const elements = {
   placeBetButton: document.querySelector('#placeBetButton'),
   resetBalanceButton: document.querySelector('#resetBalanceButton'),
   betMessage: document.querySelector('#betMessage'),
-  chartTitle: document.querySelector('#chartTitle'),
   canvas: document.querySelector('#gameCanvas'),
   playerList: document.querySelector('#playerList'),
   inspector: document.querySelector('#inspector'),
@@ -357,7 +356,6 @@ function renderTopbar() {
   elements.phaseBadge.textContent = 'Streaming';
   elements.phaseBadge.dataset.phase = 'live';
   elements.altitudeBadge.textContent = `Altitude ${state.currentAltitude}`;
-  elements.chartTitle.textContent = 'Flak impact at 75%';
 }
 
 function getVisibleRuns(now) {
@@ -945,19 +943,25 @@ function drawPlanes(map, now) {
 
     const y = map.yForAltitude(run.altitudeTicks);
     const selected = state.selectedRunId === run.id;
+    const userRun = run.kind === 'user';
+    const planeSelected = selected && !userRun;
     const hasReachedFiringLine = x >= map.centerX - IMPACT_WINDOW_PX;
     const showImpact = run.status === 'hit' && hasReachedFiringLine;
     const impactAgeMs = Math.max(0, now - run.impactTimeMs);
 
+    if (userRun) {
+      drawUserPlaneMarker(x, y, now);
+    }
+
     if (showImpact) {
-      drawFireball(x, y, impactAgeMs, selected);
-      drawPlaneLabel(run.username, x, y - 44, selected);
+      drawFireball(x, y, impactAgeMs, planeSelected);
+      drawPlaneLabel(run.username, x, y - 50, planeSelected);
     } else {
       drawSvgPlane({
         x,
         y,
         color: run.color,
-        selected,
+        selected: planeSelected,
         ghost: false,
         label: run.username,
       });
@@ -1047,6 +1051,28 @@ function drawPlaneLabel(label, x, y, selected = false) {
   context.lineWidth = 3;
   context.strokeText(label, x, y);
   context.fillText(label, x, y);
+  context.restore();
+}
+
+function drawUserPlaneMarker(x, y, now) {
+  const pulse = 0.5 + Math.sin(now / 260) * 0.5;
+  const glowWidth = 92 + pulse * 10;
+  const glowHeight = 46 + pulse * 6;
+
+  context.save();
+  context.translate(x, y);
+  context.rotate(-0.08);
+  context.scale(glowWidth / 2, glowHeight / 2);
+  const glow = context.createRadialGradient(-0.14, -0.04, 0.05, 0, 0, 1);
+  glow.addColorStop(0, 'rgba(255, 223, 92, 0.42)');
+  glow.addColorStop(0.45, 'rgba(255, 185, 38, 0.2)');
+  glow.addColorStop(1, 'rgba(255, 185, 38, 0)');
+  context.fillStyle = glow;
+  context.shadowColor = 'rgba(255, 207, 74, 0.35)';
+  context.shadowBlur = 22;
+  context.beginPath();
+  context.arc(0, 0, 1, 0, Math.PI * 2);
+  context.fill();
   context.restore();
 }
 
