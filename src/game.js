@@ -4,8 +4,9 @@ export const CONTINUOUS_CONFIG = Object.freeze({
   exitAfterCenterSeconds: 15,
   maxStake: 300,
   startingBalance: 1_000,
-  initialAltitude: 20,
+  initialAltitude: 50,
   minAltitude: 0,
+  maxFlightAltitude: 100,
 });
 
 export const PAYOUT_MULTIPLIERS = Object.freeze([1.2, 1.5, 2, 3, 5, 8, 10, 15, 20, 30]);
@@ -139,15 +140,10 @@ export function nearestAltitudeForWinChance(initialChargeAltitude, desiredWinCha
 }
 
 export function maxSelectableAltitude(
-  currentChargeAltitude,
+  currentChargeAltitude = CONTINUOUS_CONFIG.initialAltitude,
   etaSeconds = CONTINUOUS_CONFIG.entryEtaSeconds,
 ) {
-  const initialChargeAltitude = Math.max(0, Math.round(Number(currentChargeAltitude) || 0));
-  const steps = Math.round(etaSeconds * (1000 / CONTINUOUS_CONFIG.tickMs));
-  return Math.max(
-    CONTINUOUS_CONFIG.initialAltitude + 20,
-    Math.ceil((initialChargeAltitude + steps + 8) / 5) * 5,
-  );
+  return CONTINUOUS_CONFIG.maxFlightAltitude;
 }
 
 export function normalizeAltitudeTicks(
@@ -191,20 +187,24 @@ export function getPayoutOptions(
 ) {
   const initialChargeAltitude = Math.max(0, Math.round(Number(currentChargeAltitude) || 0));
   const steps = Math.round(etaSeconds * (1000 / CONTINUOUS_CONFIG.tickMs));
+  const maxAltitude = maxSelectableAltitude(initialChargeAltitude, etaSeconds);
 
   return multipliers
     .map((payoutMultiplier) => {
       const desiredWinChance = 1 / payoutMultiplier;
       const nearest = nearestAltitudeForWinChance(initialChargeAltitude, desiredWinChance, steps);
+      const altitudeTicks = Math.min(nearest.altitudeTicks, maxAltitude);
+      const winChance = survivalChanceForAltitude(initialChargeAltitude, altitudeTicks, steps);
+      const error = Math.abs(winChance - desiredWinChance);
       const tolerance = Math.max(0.035, desiredWinChance * 0.3);
       return {
         payoutMultiplier,
         desiredWinChance,
-        altitudeTicks: nearest.altitudeTicks,
-        altitudeOffsetTicks: nearest.altitudeTicks - initialChargeAltitude,
-        winChance: nearest.winChance,
-        error: nearest.error,
-        valid: nearest.error <= tolerance,
+        altitudeTicks,
+        altitudeOffsetTicks: altitudeTicks - initialChargeAltitude,
+        winChance,
+        error,
+        valid: error <= tolerance,
       };
     })
     .filter((option) => option.valid)
@@ -312,13 +312,19 @@ export function generateBotRun({
     0.5,
     CONTINUOUS_CONFIG.entryEtaSeconds * 10,
   );
+  const fallbackAltitude = normalizeAltitudeTicks(fallback.altitudeTicks, currentChargeAltitude);
+  const fallbackWinChance = survivalChanceForAltitude(
+    currentChargeAltitude,
+    fallbackAltitude,
+    CONTINUOUS_CONFIG.entryEtaSeconds * 10,
+  );
   const option = options.length
     ? options[randomInt(0, options.length - 1, rng)]
     : {
         payoutMultiplier: 2,
-        altitudeTicks: fallback.altitudeTicks,
-        altitudeOffsetTicks: fallback.altitudeTicks - currentChargeAltitude,
-        winChance: fallback.winChance,
+        altitudeTicks: fallbackAltitude,
+        altitudeOffsetTicks: fallbackAltitude - currentChargeAltitude,
+        winChance: fallbackWinChance,
       };
   const name = BOT_NAMES[randomInt(0, BOT_NAMES.length - 1, rng)];
 

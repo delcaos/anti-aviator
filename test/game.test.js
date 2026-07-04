@@ -22,6 +22,11 @@ function hslHue(color) {
   return Number(color.match(/^hsl\((\d+),/)?.[1]);
 }
 
+test('continuous config starts flak at 50 with a fixed 100 tick ceiling', () => {
+  assert.equal(CONTINUOUS_CONFIG.initialAltitude, 50);
+  assert.equal(CONTINUOUS_CONFIG.maxFlightAltitude, 100);
+});
+
 test('anti-aircraft charge walk never goes below zero', () => {
   let altitude = 0;
   for (let index = 0; index < 25; index += 1) {
@@ -69,8 +74,16 @@ test('altitude quote derives payout from chosen altitude', () => {
 
 test('altitude quote clamps to the selectable flight ceiling', () => {
   const quote = quoteAltitudeBet(20, 999);
-  assert.equal(quote.altitudeTicks, maxSelectableAltitude(20));
+  assert.equal(maxSelectableAltitude(20), 100);
+  assert.equal(maxSelectableAltitude(250), 100);
+  assert.equal(quote.altitudeTicks, 100);
   assert.ok(quote.valid);
+});
+
+test('payout options never exceed the static flight ceiling', () => {
+  const options = getPayoutOptions(20);
+  assert.ok(options.length > 0);
+  assert.ok(options.every((option) => option.altitudeTicks <= maxSelectableAltitude(20)));
 });
 
 test('plane run impact is scheduled 20 seconds after launch', () => {

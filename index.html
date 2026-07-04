@@ -19,7 +19,7 @@
         <div class="stream-strip" aria-live="polite">
           <span id="streamLabel">Live airspace</span>
           <span id="phaseBadge" class="phase-badge">Streaming</span>
-          <span id="timerLabel">Altitude 20</span>
+          <span id="timerLabel">Altitude 50</span>
         </div>
         <div class="balance-box">
           <span>Balance</span>
@@ -46,20 +46,20 @@
             </label>
             <div class="axis-pair stake-summary">
               <span id="stakeTimeLabel">ETA 20s</span>
-              <span id="stakeCreditLabel">0 credits</span>
+              <span id="stakeCreditLabel">$0</span>
             </div>
           </div>
 
           <div class="altitude-row">
             <label class="field">
               <span>Altitude ticks</span>
-              <input id="altitudeInput" type="number" min="1" max="240" step="1" />
+              <input id="altitudeInput" type="number" min="1" max="100" step="1" />
             </label>
             <div class="stake-meter">
-              <input id="altitudeRange" type="range" min="1" max="240" step="1" />
+              <input id="altitudeRange" type="range" min="1" max="100" step="1" />
               <div class="axis-pair">
                 <span id="altitudeTickLabel">0 ticks</span>
-                <span id="altitudeLimitLabel">max 0</span>
+                <span id="altitudeLimitLabel">max 100</span>
               </div>
             </div>
           </div>

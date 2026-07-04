@@ -3,6 +3,7 @@ import {
   AVIATOR_RED,
   CONTINUOUS_CONFIG,
   applyPayout,
+  clamp,
   createPlaneRun,
   deductStake,
   generateBotRun,
@@ -33,6 +34,7 @@ const BOT_MAX_GAP_MS = 1_900;
 const HISTORY_LIMIT = 8;
 const IMPACT_WINDOW_PX = 10;
 const PLANE_TRACE_RENDER_WIDTH = 112;
+const CHART_MAX_ALTITUDE = CONTINUOUS_CONFIG.maxFlightAltitude;
 
 let planeTracePathCache = null;
 
@@ -87,8 +89,19 @@ function saveBalance() {
   localStorage.setItem(STORAGE_KEYS.balance, String(state.balance));
 }
 
-function formatCredits(value) {
-  return `${Math.round(value * 100) / 100}`;
+function formatCredits(value, { signed = false } = {}) {
+  const amount = Math.round(Math.abs(value) * 100) / 100;
+  const money = `$${amount}`;
+  if (!signed) {
+    return value < 0 ? `-${money}` : money;
+  }
+  if (value > 0) {
+    return `+${money}`;
+  }
+  if (value < 0) {
+    return `-${money}`;
+  }
+  return money;
 }
 
 function formatMultiplier(value) {
@@ -339,13 +352,13 @@ function renderControls() {
 
   elements.balanceLabel.textContent = formatCredits(state.balance);
   elements.stakeTimeLabel.textContent = `ETA ${CONTINUOUS_CONFIG.entryEtaSeconds}s`;
-  elements.stakeCreditLabel.textContent = `${stakeCredits} credits`;
+  elements.stakeCreditLabel.textContent = formatCredits(stakeCredits);
   elements.payoutLabel.textContent = option?.valid
     ? `${formatMultiplier(option.payoutMultiplier)}${option.capped ? '+' : ''}`
     : '-';
   elements.chanceLabel.textContent = option?.valid ? formatPercent(option.winChance) : '-';
   elements.returnLabel.textContent = option?.valid
-    ? `${formatCredits(stakeCredits * option.payoutMultiplier)} credits`
+    ? formatCredits(stakeCredits * option.payoutMultiplier)
     : '-';
   elements.placeBetButton.disabled = !canBet;
   elements.betMessage.textContent = state.message;
@@ -428,7 +441,7 @@ function renderPlayerList(now = performance.now()) {
       : `flak ${run.chargeAltitudeAtImpact}`;
     const meta = document.createElement('span');
     meta.className = 'player-meta';
-    meta.textContent = `${run.stakeCredits} cr | ${formatMultiplier(run.payoutMultiplier)} | ${etaText}`;
+    meta.textContent = `${formatCredits(run.stakeCredits)} | ${formatMultiplier(run.payoutMultiplier)} | ${etaText}`;
 
     const status = document.createElement('span');
     status.className = 'player-status';
@@ -463,9 +476,9 @@ function renderInspector(now = performance.now()) {
   const list = document.createElement('dl');
   list.className = 'inspect-grid';
   const rows = [
-    ['Stake', `${selected.stakeCredits} credits`],
+    ['Stake', formatCredits(selected.stakeCredits)],
     ['Payout', formatMultiplier(selected.payoutMultiplier)],
-    ['Return', `${formatCredits(selected.potentialPayout)} credits`],
+    ['Return', formatCredits(selected.potentialPayout)],
     ['Altitude', `${selected.altitudeTicks} ticks`],
     ['Offset', formatOffset(selected.altitudeOffsetTicks)],
     ['Win chance', formatPercent(selected.winChance)],
@@ -503,8 +516,8 @@ function renderHistory() {
     item.innerHTML = `
       <span>Flight ${state.history.length - index}</span>
       <strong>${statusLabel(entry.status)}</strong>
-      <small>${entry.stakeCredits} cr at ${formatMultiplier(entry.payoutMultiplier)}</small>
-      <em>${entry.delta >= 0 ? '+' : ''}${formatCredits(entry.delta)}</em>
+      <small>${formatCredits(entry.stakeCredits)} at ${formatMultiplier(entry.payoutMultiplier)}</small>
+      <em>${formatCredits(entry.delta, { signed: true })}</em>
     `;
     elements.historyList.append(item);
   });
@@ -532,13 +545,6 @@ function resizeCanvas() {
   }
 
   return { width, height };
-}
-
-function getMaxAltitude(now) {
-  const recentAltitude = state.timeline.reduce((max, point) => Math.max(max, point.altitudeTicks), state.currentAltitude);
-  const runAltitude = getVisibleRuns(now).reduce((max, run) => Math.max(max, run.altitudeTicks), 0);
-  const previewAltitude = getLaunchPreview(now)?.altitudeTicks ?? 0;
-  return Math.max(40, Math.ceil((Math.max(recentAltitude, runAltitude, previewAltitude) + 8) / 10) * 10);
 }
 
 function createChartMapper(width, height, maxAltitude) {
@@ -573,14 +579,19 @@ function createChartMapper(width, height, maxAltitude) {
       return impactX + ((timeMs - now) / 1000) * pxPerSecond;
     },
     yForAltitude(altitudeTicks) {
-      return bottomY - (altitudeTicks / maxAltitude) * plotHeight;
+      const boundedAltitude = clamp(
+        Number(altitudeTicks) || CONTINUOUS_CONFIG.minAltitude,
+        CONTINUOUS_CONFIG.minAltitude,
+        maxAltitude,
+      );
+      return bottomY - (boundedAltitude / maxAltitude) * plotHeight;
     },
   };
 }
 
 function drawCanvas(now = performance.now()) {
   const { width, height } = resizeCanvas();
-  const maxAltitude = getMaxAltitude(now);
+  const maxAltitude = CHART_MAX_ALTITUDE;
   const map = createChartMapper(width, height, maxAltitude);
 
   state.hitboxes = [];
@@ -986,7 +997,7 @@ function drawPlaneRun(run, map, now) {
 }
 
 function formatRunWager(run) {
-  return `$${formatCredits(run.stakeCredits)} @ ${formatMultiplier(run.payoutMultiplier)}`;
+  return `${formatCredits(run.stakeCredits)} @ ${formatMultiplier(run.payoutMultiplier)}`;
 }
 
 function drawLaunchPreview(map, now) {
