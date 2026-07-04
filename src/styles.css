@@ -93,15 +93,16 @@ h1 {
   position: relative;
   display: block;
   flex: 0 0 auto;
-  width: 88px;
-  height: 88px;
+  width: 78px;
+  height: 78px;
+  margin: -5px 6px -5px 0;
 }
 
 .brand-icon-frame {
   position: absolute;
   inset: 0;
   display: block;
-  overflow: hidden;
+  overflow: visible;
   background: transparent;
 }
 
@@ -110,6 +111,8 @@ h1 {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  transform: translateX(3px) scale(1.55);
+  transform-origin: center;
 }
 
 h2 {
@@ -531,8 +534,9 @@ canvas {
   }
 
   .brand-icon {
-    width: 72px;
-    height: 72px;
+    width: 64px;
+    height: 64px;
+    margin: -4px 4px -4px 0;
   }
 
   h1 {

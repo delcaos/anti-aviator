@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  AVIATOR_RED,
   CONTINUOUS_CONFIG,
   applyPayout,
   createPlaneRun,
@@ -16,6 +17,10 @@ import {
   settleRun,
   survivalChanceForAltitude,
 } from '../src/game.js';
+
+function hslHue(color) {
+  return Number(color.match(/^hsl\((\d+),/)?.[1]);
+}
 
 test('anti-aircraft charge walk never goes below zero', () => {
   let altitude = 0;
@@ -74,12 +79,13 @@ test('plane run impact is scheduled 20 seconds after launch', () => {
     id: 'user-1',
     username: 'Pilot',
     kind: 'user',
-    color: '#56cfe1',
+    color: AVIATOR_RED,
     stakeCredits: 75,
     option,
     enteredAtMs: 1_000,
   });
 
+  assert.equal(run.color, AVIATOR_RED);
   assert.equal(run.status, 'inbound');
   assert.equal(run.impactTimeMs, 21_000);
   assert.equal(run.exitsAtMs, 36_000);
@@ -108,14 +114,19 @@ test('bot generation creates a valid inbound plane run', () => {
   assert.equal(bot.kind, 'bot');
   assert.equal(bot.status, 'inbound');
   assert.match(bot.color, /^hsl\(\d+, \d+%, \d+%\)$/);
+  assert.ok(hslHue(bot.color) >= 45 && hslHue(bot.color) <= 265);
   assert.ok(bot.altitudeTicks >= 1);
   assert.ok(bot.winChance > 0 && bot.winChance <= 1);
 });
 
-test('random plane color uses the full launch color generator', () => {
+test('random plane color avoids aviator red-adjacent hues', () => {
   const values = [0, 0.5, 0.999];
   const color = randomPlaneColor(() => values.shift() ?? 0);
-  assert.equal(color, 'hsl(0, 84%, 66%)');
+  const hue = hslHue(color);
+
+  assert.equal(color, 'hsl(45, 84%, 66%)');
+  assert.ok(hue >= 45 && hue <= 265);
+  assert.notEqual(color.toLowerCase(), AVIATOR_RED);
 });
 
 test('balance deducts stake and pays stake times payout on survival', () => {

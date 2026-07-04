@@ -10,6 +10,12 @@ export const CONTINUOUS_CONFIG = Object.freeze({
 
 export const PAYOUT_MULTIPLIERS = Object.freeze([1.2, 1.5, 2, 3, 5, 8, 10, 15, 20, 30]);
 export const MAX_DERIVED_PAYOUT = 999;
+export const AVIATOR_RED = '#f3043f';
+
+const BOT_COLOR_HUE_RANGES = Object.freeze([
+  [45, 165],
+  [185, 265],
+]);
 
 const BOT_NAMES = Object.freeze([
   'Aero',
@@ -275,7 +281,19 @@ export function randomInt(min, max, rng = Math.random) {
 }
 
 export function randomPlaneColor(rng = Math.random) {
-  const hue = randomInt(0, 359, rng);
+  const hueCount = BOT_COLOR_HUE_RANGES.reduce((sum, [min, max]) => sum + (max - min + 1), 0);
+  let hueIndex = randomInt(0, hueCount - 1, rng);
+  let hue = BOT_COLOR_HUE_RANGES[0][0];
+
+  for (const [min, max] of BOT_COLOR_HUE_RANGES) {
+    const rangeSize = max - min + 1;
+    if (hueIndex < rangeSize) {
+      hue = min + hueIndex;
+      break;
+    }
+    hueIndex -= rangeSize;
+  }
+
   const saturation = randomInt(72, 96, rng);
   const lightness = randomInt(54, 66, rng);
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;

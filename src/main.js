@@ -1,5 +1,6 @@
 import './styles.css';
 import {
+  AVIATOR_RED,
   CONTINUOUS_CONFIG,
   applyPayout,
   createPlaneRun,
@@ -10,7 +11,6 @@ import {
   normalizeAltitudeTicks,
   normalizeStake,
   quoteAltitudeBet,
-  randomPlaneColor,
   randomInt,
   settleRun,
 } from './game.js';
@@ -26,7 +26,7 @@ const STORAGE_KEYS = Object.freeze({
   username: 'anti-aviator.username',
 });
 
-const PREVIEW_COLOR = '#f3043f';
+const PREVIEW_COLOR = AVIATOR_RED;
 const UI_REFRESH_MS = 160;
 const BOT_MIN_GAP_MS = 700;
 const BOT_MAX_GAP_MS = 1_900;
@@ -286,7 +286,7 @@ function placeUserBet() {
   const run = createRun({
     username,
     kind: 'user',
-    color: randomPlaneColor(),
+    color: AVIATOR_RED,
     stakeCredits,
     option,
     enteredAtMs: now,
@@ -589,8 +589,8 @@ function drawCanvas(now = performance.now()) {
   drawGrid(width, height, map, maxAltitude);
   drawKillZone(map, now);
   drawChargePath(map, now);
-  drawPlanes(map, now);
   drawLaunchPreview(map, now);
+  drawPlanes(map, now);
   drawAntiAircraftGun(map, now);
 }
 
@@ -935,45 +935,52 @@ function drawRapidFlakBursts(x, y, now) {
 }
 
 function drawPlanes(map, now) {
-  getVisibleRuns(now).forEach((run) => {
-    const x = map.xForImpactTime(run.impactTimeMs, now);
-    if (x < map.leftX - 80 || x > map.rightX + 80) {
-      return;
-    }
+  const visibleRuns = getVisibleRuns(now);
+  const botRuns = visibleRuns.filter((run) => run.kind !== 'user');
+  const userRuns = visibleRuns.filter((run) => run.kind === 'user');
 
-    const y = map.yForAltitude(run.altitudeTicks);
-    const selected = state.selectedRunId === run.id;
-    const userRun = run.kind === 'user';
-    const planeSelected = selected && !userRun;
-    const hasReachedFiringLine = x >= map.centerX - IMPACT_WINDOW_PX;
-    const showImpact = run.status === 'hit' && hasReachedFiringLine;
-    const impactAgeMs = Math.max(0, now - run.impactTimeMs);
+  botRuns.forEach((run) => drawPlaneRun(run, map, now));
+  userRuns.forEach((run) => drawPlaneRun(run, map, now));
+}
 
-    if (userRun) {
-      drawUserPlaneMarker(x, y, now);
-    }
+function drawPlaneRun(run, map, now) {
+  const x = map.xForImpactTime(run.impactTimeMs, now);
+  if (x < map.leftX - 80 || x > map.rightX + 80) {
+    return;
+  }
 
-    if (showImpact) {
-      drawFireball(x, y, impactAgeMs, planeSelected);
-      drawPlaneLabel(run.username, x, y - 50, planeSelected);
-    } else {
-      drawSvgPlane({
-        x,
-        y,
-        color: run.color,
-        selected: planeSelected,
-        ghost: false,
-        label: run.username,
-      });
-    }
+  const y = map.yForAltitude(run.altitudeTicks);
+  const selected = state.selectedRunId === run.id;
+  const userRun = run.kind === 'user';
+  const planeSelected = selected && !userRun;
+  const hasReachedFiringLine = x >= map.centerX - IMPACT_WINDOW_PX;
+  const showImpact = run.status === 'hit' && hasReachedFiringLine;
+  const impactAgeMs = Math.max(0, now - run.impactTimeMs);
 
-    state.hitboxes.push({
-      runId: run.id,
-      x: x - 52,
-      y: y - 36,
-      width: 104,
-      height: 72,
+  if (userRun) {
+    drawUserPlaneMarker(x, y, now);
+  }
+
+  if (showImpact) {
+    drawFireball(x, y, impactAgeMs, planeSelected || userRun);
+    drawPlaneLabel(run.username, x, y - 50, planeSelected || userRun);
+  } else {
+    drawSvgPlane({
+      x,
+      y,
+      color: run.color,
+      selected: planeSelected,
+      ghost: false,
+      label: run.username,
     });
+  }
+
+  state.hitboxes.push({
+    runId: run.id,
+    x: x - 52,
+    y: y - 36,
+    width: 104,
+    height: 72,
   });
 }
 
@@ -1056,23 +1063,42 @@ function drawPlaneLabel(label, x, y, selected = false) {
 
 function drawUserPlaneMarker(x, y, now) {
   const pulse = 0.5 + Math.sin(now / 260) * 0.5;
-  const glowWidth = 92 + pulse * 10;
-  const glowHeight = 46 + pulse * 6;
+  const glowWidth = 128 + pulse * 18;
+  const glowHeight = 68 + pulse * 10;
 
   context.save();
   context.translate(x, y);
   context.rotate(-0.08);
+  context.globalCompositeOperation = 'lighter';
   context.scale(glowWidth / 2, glowHeight / 2);
-  const glow = context.createRadialGradient(-0.14, -0.04, 0.05, 0, 0, 1);
-  glow.addColorStop(0, 'rgba(255, 223, 92, 0.42)');
-  glow.addColorStop(0.45, 'rgba(255, 185, 38, 0.2)');
+  const glow = context.createRadialGradient(-0.08, -0.03, 0.06, 0, 0, 1);
+  glow.addColorStop(0, 'rgba(255, 250, 184, 0.98)');
+  glow.addColorStop(0.32, 'rgba(255, 204, 54, 0.78)');
+  glow.addColorStop(0.66, 'rgba(255, 176, 0, 0.34)');
   glow.addColorStop(1, 'rgba(255, 185, 38, 0)');
   context.fillStyle = glow;
-  context.shadowColor = 'rgba(255, 207, 74, 0.35)';
-  context.shadowBlur = 22;
+  context.shadowColor = 'rgba(255, 215, 82, 0.9)';
+  context.shadowBlur = 42;
   context.beginPath();
   context.arc(0, 0, 1, 0, Math.PI * 2);
   context.fill();
+  context.restore();
+
+  context.save();
+  context.translate(x, y);
+  context.rotate(-0.08);
+  context.lineWidth = 3;
+  context.strokeStyle = `rgba(255, 232, 93, ${0.78 + pulse * 0.16})`;
+  context.shadowColor = '#ffdd4a';
+  context.shadowBlur = 18;
+  context.beginPath();
+  context.ellipse(0, 0, glowWidth * 0.44, glowHeight * 0.38, 0, 0, Math.PI * 2);
+  context.stroke();
+  context.lineWidth = 1.5;
+  context.strokeStyle = 'rgba(255, 248, 190, 0.86)';
+  context.beginPath();
+  context.ellipse(0, 0, glowWidth * 0.34, glowHeight * 0.28, 0, 0, Math.PI * 2);
+  context.stroke();
   context.restore();
 }
 
