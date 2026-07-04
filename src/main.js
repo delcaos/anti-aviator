@@ -963,7 +963,7 @@ function drawPlaneRun(run, map, now) {
 
   if (showImpact) {
     drawFireball(x, y, impactAgeMs, planeSelected || userRun);
-    drawPlaneLabel(run.username, x, y - 50, planeSelected || userRun);
+    drawPlaneLabel(run.username, formatRunWager(run), x, y + 58, planeSelected || userRun);
   } else {
     drawSvgPlane({
       x,
@@ -972,6 +972,7 @@ function drawPlaneRun(run, map, now) {
       selected: planeSelected,
       ghost: false,
       label: run.username,
+      labelDetail: formatRunWager(run),
     });
   }
 
@@ -980,8 +981,12 @@ function drawPlaneRun(run, map, now) {
     x: x - 52,
     y: y - 36,
     width: 104,
-    height: 72,
+    height: 104,
   });
+}
+
+function formatRunWager(run) {
+  return `$${formatCredits(run.stakeCredits)} @ ${formatMultiplier(run.payoutMultiplier)}`;
 }
 
 function drawLaunchPreview(map, now) {
@@ -1027,6 +1032,7 @@ function drawSvgPlane({
   selected = false,
   ghost = false,
   label = '',
+  labelDetail = '',
 }) {
   const path = getPlaneTracePath();
   const scale = PLANE_TRACE_RENDER_WIDTH / PLANE_TRACE_VIEWBOX.width;
@@ -1045,19 +1051,28 @@ function drawSvgPlane({
   context.restore();
 
   if (label) {
-    drawPlaneLabel(label, x, y - 28, selected);
+    drawPlaneLabel(label, labelDetail, x, y + 43, selected);
   }
 }
 
-function drawPlaneLabel(label, x, y, selected = false) {
+function drawPlaneLabel(label, detail, x, y, selected = false) {
   context.save();
-  context.font = selected ? '700 13px Inter, system-ui, sans-serif' : '600 12px Inter, system-ui, sans-serif';
   context.textAlign = 'center';
-  context.fillStyle = '#f5f5f0';
   context.strokeStyle = 'rgba(3, 2, 2, 0.86)';
-  context.lineWidth = 3;
+  context.lineJoin = 'round';
+  context.lineWidth = 4;
+
+  context.font = selected ? '800 13px Inter, system-ui, sans-serif' : '700 12px Inter, system-ui, sans-serif';
+  context.fillStyle = '#fff8fa';
   context.strokeText(label, x, y);
   context.fillText(label, x, y);
+
+  if (detail) {
+    context.font = selected ? '700 11px Inter, system-ui, sans-serif' : '650 10px Inter, system-ui, sans-serif';
+    context.fillStyle = 'rgba(255, 245, 247, 0.88)';
+    context.strokeText(detail, x, y + 13);
+    context.fillText(detail, x, y + 13);
+  }
   context.restore();
 }
 
