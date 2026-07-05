@@ -29,8 +29,13 @@ const STORAGE_KEYS = Object.freeze({
 
 const PREVIEW_COLOR = AVIATOR_RED;
 const UI_REFRESH_MS = 160;
-const BOT_MIN_GAP_MS = 700;
-const BOT_MAX_GAP_MS = 1_900;
+const BOT_INITIAL_COUNT = 5;
+const BOT_INITIAL_LOOKBACK_MS = 9_000;
+const BOT_FIRST_GAP_MIN_MS = 900;
+const BOT_FIRST_GAP_MAX_MS = 1_700;
+const BOT_MIN_GAP_MS = 1_500;
+const BOT_MAX_GAP_MS = 3_200;
+const BOT_SPAWN_CATCHUP_LIMIT = 3;
 const HISTORY_LIMIT = 8;
 const IMPACT_WINDOW_PX = 10;
 const CHART_MAX_ALTITUDE = CONTINUOUS_CONFIG.maxFlightAltitude;
@@ -210,25 +215,25 @@ function spawnBot(enteredAtMs = performance.now()) {
 }
 
 function seedInitialTraffic(now) {
-  for (let index = 0; index < 10; index += 1) {
-    spawnBot(now - randomInt(0, 11_500));
+  for (let index = 0; index < BOT_INITIAL_COUNT; index += 1) {
+    spawnBot(now - randomInt(0, BOT_INITIAL_LOOKBACK_MS));
   }
-  state.nextBotAtMs = now + randomInt(350, 900);
+  state.nextBotAtMs = now + randomInt(BOT_FIRST_GAP_MIN_MS, BOT_FIRST_GAP_MAX_MS);
 }
 
 function updateBotTraffic(now) {
   if (!state.nextBotAtMs) {
-    state.nextBotAtMs = now + randomInt(350, 900);
+    state.nextBotAtMs = now + randomInt(BOT_FIRST_GAP_MIN_MS, BOT_FIRST_GAP_MAX_MS);
   }
 
   let spawned = 0;
-  while (now >= state.nextBotAtMs && spawned < 6) {
+  while (now >= state.nextBotAtMs && spawned < BOT_SPAWN_CATCHUP_LIMIT) {
     spawnBot(state.nextBotAtMs);
     state.nextBotAtMs += randomInt(BOT_MIN_GAP_MS, BOT_MAX_GAP_MS);
     spawned += 1;
   }
 
-  if (spawned >= 6 && now >= state.nextBotAtMs) {
+  if (spawned >= BOT_SPAWN_CATCHUP_LIMIT && now >= state.nextBotAtMs) {
     state.nextBotAtMs = now + randomInt(BOT_MIN_GAP_MS, BOT_MAX_GAP_MS);
   }
 }
@@ -997,7 +1002,7 @@ function drawPlaneRun(run, map, now) {
 
   if (showImpact) {
     drawFireball(x, y, impactAgeMs, planeSelected || userRun, planeWidth);
-    drawPlaneLabel(run.username, formatRunWager(run), x, y + labelOffset + 15, planeSelected || userRun, map.mobile);
+    drawPlaneLabel(run.username, formatRunWager(run), x, y + labelOffset + 6, planeSelected || userRun, map.mobile);
   } else {
     drawSvgPlane({
       x,
@@ -1039,7 +1044,7 @@ function planeWidthForStake(stakeCredits, map) {
 }
 
 function planeLabelOffset(planeWidth, map) {
-  return clamp(planeWidth * 0.38, map.mobile ? 27 : 34, map.mobile ? 42 : 56);
+  return clamp(planeWidth * 0.19, map.mobile ? 13 : 16, map.mobile ? 24 : 30);
 }
 
 function drawLaunchPreview(map, now) {
@@ -1116,24 +1121,44 @@ function drawSvgPlane({
 function drawPlaneLabel(label, detail, x, y, selected = false, compact = false) {
   context.save();
   context.textAlign = 'center';
-  context.strokeStyle = 'rgba(3, 2, 2, 0.86)';
   context.lineJoin = 'round';
-  context.lineWidth = compact ? 3 : 4;
 
-  context.font = selected
+  const labelFont = selected
     ? `800 ${compact ? 11 : 13}px Inter, system-ui, sans-serif`
     : `700 ${compact ? 10 : 12}px Inter, system-ui, sans-serif`;
+  const detailFont = selected
+    ? `700 ${compact ? 9 : 11}px Inter, system-ui, sans-serif`
+    : `650 ${compact ? 9 : 10}px Inter, system-ui, sans-serif`;
+  const detailOffset = compact ? 11 : 13;
+  const horizontalPadding = compact ? 6 : 8;
+  const plateTop = y - (compact ? 11 : 13);
+  const plateHeight = detail ? (compact ? 27 : 32) : (compact ? 16 : 19);
+
+  context.font = labelFont;
+  const labelWidth = context.measureText(label).width;
+  context.font = detailFont;
+  const detailWidth = detail ? context.measureText(detail).width : 0;
+  const plateWidth = Math.ceil(Math.max(labelWidth, detailWidth) + horizontalPadding * 2);
+
+  context.fillStyle = selected ? 'rgba(42, 18, 8, 0.86)' : 'rgba(6, 4, 5, 0.76)';
+  context.strokeStyle = selected ? 'rgba(255, 176, 0, 0.52)' : 'rgba(243, 4, 63, 0.28)';
+  context.lineWidth = 1;
+  roundedRect(x - plateWidth / 2, plateTop, plateWidth, plateHeight, compact ? 5 : 6);
+  context.fill();
+  context.stroke();
+
+  context.strokeStyle = 'rgba(3, 2, 2, 0.9)';
+  context.lineWidth = compact ? 2.5 : 3.5;
+  context.font = labelFont;
   context.fillStyle = '#fff8fa';
   context.strokeText(label, x, y);
   context.fillText(label, x, y);
 
   if (detail) {
-    context.font = selected
-      ? `700 ${compact ? 9 : 11}px Inter, system-ui, sans-serif`
-      : `650 ${compact ? 9 : 10}px Inter, system-ui, sans-serif`;
+    context.font = detailFont;
     context.fillStyle = 'rgba(255, 245, 247, 0.88)';
-    context.strokeText(detail, x, y + (compact ? 11 : 13));
-    context.fillText(detail, x, y + (compact ? 11 : 13));
+    context.strokeText(detail, x, y + detailOffset);
+    context.fillText(detail, x, y + detailOffset);
   }
   context.restore();
 }
