@@ -551,10 +551,9 @@ canvas {
   .topbar {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
-      "brand balance"
-      "stream stream";
-    gap: 8px;
-    margin-bottom: 8px;
+      "brand balance";
+    gap: 6px;
+    margin-bottom: 6px;
   }
 
   .brand-lockup {
@@ -594,14 +593,6 @@ canvas {
   }
 
   .stream-strip {
-    grid-area: stream;
-    min-height: 36px;
-    justify-content: space-between;
-    padding: 7px 9px;
-    gap: 8px;
-  }
-
-  .stream-strip span:first-child {
     display: none;
   }
 
